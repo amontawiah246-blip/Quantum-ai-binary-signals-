@@ -1,0 +1,6 @@
+{
+  "name": "QuantAI Binary Signals",
+  "description": "Multi-agent AI signal engine for binary options using M5 Trend Bias, M1 Stochastic/RSI entry alignment, and SMC institutional analysis.",
+  "requestFramePermissions": [],
+  "majorCapabilities": ["MAJOR_CAPABILITY_SERVER_SIDE_GEMINI_API"]
+}
