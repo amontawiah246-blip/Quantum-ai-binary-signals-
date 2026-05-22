@@ -479,84 +479,45 @@ function agentPriceAction(candles: any[], cfg: TFConfig) {
   };
 }
 
-async function analyzeGitHubVision(candles: any[]) {
-  const hasToken = !!process.env.GITHUB_TOKEN;
-  const last = candles[candles.length - 1];
-  const recentHighs = Math.max(...candles.slice(-25, -1).map(c => c.high));
-  const recentLows = Math.min(...candles.slice(-25, -1).map(c => c.low));
-  const rangeLength = recentHighs - recentLows;
+function agentBBStoch(candles: any[], cfg: TFConfig) {
+  const prices = candles.map(c => c.close);
+  const bb = calcBB(prices, cfg.bbPeriod, cfg.bbStdDev);
+  const stoch = calcStoch(candles, cfg.stochK, cfg.stochD);
+  const last = prices.length - 1;
 
-  if (!hasToken) {
-    let side: "BUY" | "SELL" | "NEUTRAL" = "NEUTRAL";
-    let confidence = 0;
-    let reasoning = "Vision Logic: Scanning fractal structure for institutional footprints.";
+  const currentPrice = prices[last];
+  const currentBB = bb[last];
+  const currentStochK = stoch.k[last] ?? 50;
+  const currentStochD = stoch.d[last] ?? 50;
 
-    const isSSL_Purge = last.low <= recentLows + (rangeLength * 0.15) && last.close > last.open;
-    const isBSL_Purge = last.high >= recentHighs - (rangeLength * 0.15) && last.close < last.open;
-
-    if (isSSL_Purge) {
-      side = "BUY";
-      confidence = 94;
-      reasoning += " CRITICAL: Institutional SSL Purge confirmed. Smart money has trapped retail shorts and is mitigating long orders. High-probability bullish delivery expected.";
-    } else if (isBSL_Purge) {
-      side = "SELL";
-      confidence = 94;
-      reasoning += " CRITICAL: BSL Purge confirmed. Institutional distribution detected. Market is being offloaded into retail buy-pressure. Imminent collapse expected.";
-    }
-
-    return { 
-      name: "SMC Vision (Simulated)", 
-      side, 
-      confidence, 
-      reasoning 
-    };
+  if (!currentBB || isNaN(currentStochK) || isNaN(currentStochD)) {
+    return { name: "BB + Stoch Agent", side: "NEUTRAL" as const, confidence: 0, reasoning: "Not enough data for BB/Stoch calculation." };
   }
 
-  try {
-    const response = await fetch("https://models.inference.ai.azure.com/chat/completions", {
-      method: "POST",
-      headers: {
-        "Content-Type": "application/json",
-        "Authorization": `Bearer ${process.env.GITHUB_TOKEN}`,
-      },
-      body: JSON.stringify({
-        model: "Meta-Llama-3.1-405B-Instruct",
-        messages: [
-          {
-            role: "system",
-            content: "You are an expert SMC (Smart Money Concepts) trading AI. Analyze the recent candlestick data and identify if there is a Buy-Side Liquidity (BSL) purge, Sell-Side Liquidity (SSL) purge, Order Block formation, or Fair Value Gap (FVG). You must output your analysis as purely JSON format, with no markdown format, containing exactly: { side: 'BUY' | 'SELL' | 'NEUTRAL', confidence: number, reasoning: string }. Number for confidence should be 0-100."
-          },
-          {
-            role: "user",
-            content: "Recent Candles Data (Last 10 OHLCV): " + JSON.stringify(candles.slice(-10))
-          }
-        ],
-        temperature: 0.2,
-        max_tokens: 300
-      })
-    });
+  let score = 0;
+  const reasons: string[] = [];
 
-    if (!response.ok) {
-        throw new Error("GitHub API Error: " + response.statusText);
-    }
-    const data = await response.json();
-    const messageContent = data.choices[0].message.content;
-    const parsed = JSON.parse(messageContent.replace(/```json|```/g, "").trim());
-    
-    return {
-      name: "SMC Vision (Llama-3.1-405b)",
-      side: parsed.side || "NEUTRAL",
-      confidence: parsed.confidence || 0,
-      reasoning: "Live Llama SMC Analysis: " + (parsed.reasoning || "No reasoning.")
-    };
-  } catch (err: any) {
-    return {
-      name: "SMC Vision (Llama-3.1-405b)",
-      side: "NEUTRAL",
-      confidence: 0,
-      reasoning: "GitHub API Call failed: " + err.message
-    };
+  if (currentPrice < currentBB.lower) { score += 2; reasons.push(`Price pierced lower Bollinger Band — exhaustion long setup`); }
+  else if (currentPrice > currentBB.upper) { score -= 2; reasons.push(`Price pierced upper Bollinger Band — exhaustion short setup`); }
+  else if (currentBB.bandwidth < 0.001) { reasons.push(`Bollinger Bands squeezing — wait for breakout`); }
+
+  if (currentStochK < 20 && currentStochD < 20) {
+    score += 1; reasons.push(`Stochastic oversold`);
+    if (currentStochK > currentStochD) { score += 2; reasons.push(`Stoch bullish crossover`); }
+  } else if (currentStochK > 80 && currentStochD > 80) {
+    score -= 1; reasons.push(`Stochastic overbought`);
+    if (currentStochK < currentStochD) { score -= 2; reasons.push(`Stoch bearish crossover`); }
   }
+
+  const side = score >= 3 ? "BUY" : score <= -3 ? "SELL" : "NEUTRAL";
+  const confidence = Math.min(Math.abs(score) * 12 + 40, 92);
+
+  return {
+    name: "BB + Stoch Agent",
+    side,
+    confidence: side === "NEUTRAL" ? 0 : confidence,
+    reasoning: reasons.join(". ") || "No strong exhaustion or reversal signals."
+  };
 }
 
 // -----------------------------------------------------------------------------
@@ -567,43 +528,32 @@ app.get("/api/market-data", async (req, res) => {
   const { pair = "EUR/USD", timeframe = "1min" } = req.query;
   const apiKey = process.env.TWELVE_DATA_API_KEY;
   
+  if (!apiKey) {
+    return res.status(400).json({ error: "TWELVE_DATA_API_KEY is not set. Please add it to your environment variables." });
+  }
+
   const intervalMap: Record<string, string> = { "1m": "1min", "5m": "5min", "15m": "15min", "1h": "1h" };
   const interval = intervalMap[timeframe as string] || timeframe;
 
-  if (apiKey) {
-    try {
-      const response = await fetch(`https://api.twelvedata.com/time_series?symbol=${pair}&interval=${interval}&outputsize=100&apikey=${apiKey}`);
-      const data = await response.json();
-      if (data.values) {
-        return res.json(data.values.map((v: any) => ({
-          timestamp: v.datetime,
-          open: parseFloat(v.open),
-          high: parseFloat(v.high),
-          low: parseFloat(v.low),
-          close: parseFloat(v.close),
-          volume: parseInt(v.volume || "0")
-        })).reverse());
-      }
-    } catch (e) {
-      console.error("Twelve Data fetch failed", e);
-    }
+  try {
+    const response = await fetch(`https://api.twelvedata.com/time_series?symbol=${pair}&interval=${interval}&outputsize=200&apikey=${apiKey}`);
+    const data = await response.json();
+    
+    if (data.status === "error") throw new Error(data.message || "Twelve data API error");
+    if (!data.values) throw new Error("Invalid data format from Twelve Data");
+    
+    return res.json(data.values.map((v: any) => ({
+      timestamp: v.datetime,
+      open: parseFloat(v.open),
+      high: parseFloat(v.high),
+      low: parseFloat(v.low),
+      close: parseFloat(v.close),
+      volume: parseInt(v.volume || "0")
+    })).reverse());
+  } catch (e: any) {
+    console.error("Twelve Data fetch failed", e);
+    return res.status(500).json({ error: e.message || "Failed to fetch market data" });
   }
-
-  const base = 1.0850;
-  let currentBase = base;
-  const simulated = Array.from({ length: 100 }, (_, i) => {
-    const change = (Math.random() - 0.5) * 0.002;
-    currentBase += change;
-    return {
-      timestamp: new Date(Date.now() - (100 - i) * 60000).toISOString(),
-      open: currentBase,
-      high: currentBase + Math.random() * 0.001,
-      low: currentBase - Math.random() * 0.001,
-      close: currentBase + (Math.random() - 0.5) * 0.0008,
-      volume: Math.floor(Math.random() * 1000)
-    };
-  });
-  res.json(simulated);
 });
 
 app.post("/api/analyze", async (req, res) => {
@@ -617,7 +567,7 @@ app.post("/api/analyze", async (req, res) => {
       agentMomentum(candles, cfg),
       agentSMC(candles, cfg),
       agentPriceAction(candles, cfg),
-      analyzeGitHubVision(candles)
+      agentBBStoch(candles, cfg)
     ]);
 
     const aiClient = getAI();
@@ -630,14 +580,29 @@ app.post("/api/analyze", async (req, res) => {
       Do not mindlessly follow any single indicator. Use the intelligence reports to synthesize a comprehensive market view.
 
       EXECUTION MODE BEHAVIOR:
-      ${mode === "Balance" ? "- 'Balance' mode: Accept lower quality signals. You can issue a BUY or SELL even with weak or conflicting confluence if one agent shows a strong bias." : ""}
-      ${mode === "Moderate" ? "- 'Moderate' mode: Require medium quality signals. Ensure at least two agents agree before issuing a clear signal." : ""}
-      ${mode === "Pro" ? "- 'Pro' mode: THE MASTER COMES IN. Generate highly accurate signals with DEEP analysis. Proceed purely on institutional delivery rules. Confluence must be extremely strong. Provide profound, sophisticated reasoning." : ""}
+      ${mode === "Balance" ? "- 'Balance' mode: Accept lower quality signals. You can issue a BUY or SELL even with weak confluence if one agent shows a strong bias." : ""}
+      ${mode === "Moderate" ? "- 'Moderate' mode: Require medium quality signals. Ensure at least two agents agree." : ""}
+      ${mode === "Pro" ? "- 'Pro' mode: THE MASTER COMES IN. Generate highly accurate signals with DEEP analysis. Confluence must be extremely strong. Provide profound reasoning." : ""}
       
       Agent Reports:
       ${agents.map(a => `- ${a.name}: ${a.side} (Confidence: ${a.confidence}%). Reasoning: ${a.reasoning}`).join('\n')}
 
-      Recent Raw Data: ${JSON.stringify(candles.slice(-5))}
+      Recent Raw Data (10 candles + wick details):
+      ${JSON.stringify(candles.slice(-10).map(c => ({
+          close: c.close,
+          bodySize: Math.abs(c.close - c.open),
+          upperWick: c.high - Math.max(c.open, c.close),
+          lowerWick: Math.min(c.open, c.close) - c.low
+      })))}
+
+      Reasoning Framework (5 steps):
+      1. Trend & Structure
+      2. Momentum & Oscillators
+      3. Liquidity & Traps
+      4. Price Action
+      5. Final Synthesis
+
+      Your confluenceScore must be in the format of "X/Y factors aligned" (e.g. "4/5 factors aligned").
 
       Return a JSON object with:
       {
@@ -646,7 +611,8 @@ app.post("/api/analyze", async (req, res) => {
         "expirySuggestion": "${cfg.expiryLabel}",
         "marketRegime": "string",
         "volatility": "Low" | "Moderate" | "High",
-        "reasoning": "string (Detail the tough analysis and internal consensus)"
+        "confluenceScore": "string",
+        "reasoning": "string (5-step framework summary)"
       }
     `;
 
@@ -659,10 +625,10 @@ app.post("/api/analyze", async (req, res) => {
         config: { responseMimeType: "application/json" }
       });
     } catch (e: any) {
-      console.warn("gemini-2.5-flash failed, trying gemini-2.5-flash", e.message);
+      console.warn("gemini-2.5-flash failed, trying fallback", e.message);
       // fallback just in case
       response = await aiClient.models.generateContent({
-        model: "gemini-1.5-flash",
+        model: "gemini-3.5-flash",
         contents: [{ parts: [{ text: prompt }] }],
         config: { responseMimeType: "application/json" }
       });
@@ -671,11 +637,23 @@ app.post("/api/analyze", async (req, res) => {
     const text = response.text || "{}";
     const finalSignal = JSON.parse(text.replace(/```json|```/g, "").trim());
 
-    // Confidence Gate (Only take signal if Gemini confidence >= 70 AND at least 3 agents agree)
+    // Confidence Gate (Hard Rules)
     const confirmingAgents = agents.filter(a => a.side === finalSignal.side && a.side !== "NEUTRAL");
-    if (finalSignal.side !== "NEUTRAL" && (finalSignal.confidence < 70 || confirmingAgents.length < 3)) {
+    const opposingAgents = agents.filter(a => a.side !== finalSignal.side && a.side !== "NEUTRAL");
+    let blockReason = "";
+
+    if (finalSignal.side !== "NEUTRAL") {
+      if (mode === "Pro" && confirmingAgents.length < 3) blockReason = "WAIT: Pro mode requires at least 3 agreeing agents. Confluence lacking.";
+      else if (mode === "Moderate" && confirmingAgents.length < 2) blockReason = "WAIT: Moderate mode requires at least 2 agreeing agents. Confluence lacking.";
+      else if (mode === "Balance" && confirmingAgents.length < 1) blockReason = "WAIT: Balance mode requires at least 1 agreeing agent.";
+      else if (finalSignal.confidence < (mode === "Pro" ? 75 : mode === "Moderate" ? 60 : 50)) blockReason = `WAIT: AI confidence (${finalSignal.confidence}%) too low for ${mode} mode.`;
+      else if (finalSignal.volatility === "Low" && mode === "Pro") blockReason = "WAIT: Pro mode avoids Low Volatility flat chop zones.";
+      else if (opposingAgents.length > confirmingAgents.length) blockReason = "WAIT: Reversal warning — opposing agents outnumber confirming agents.";
+    }
+
+    if (blockReason) {
       finalSignal.side = "NEUTRAL";
-      finalSignal.reasoning = "WAIT: Confidence gate failed. Either Master Brain confidence < 70% or insufficient multi-agent consensus (< 3 agents agreed). Let the market develop.";
+      finalSignal.reasoning = blockReason;
       finalSignal.confidence = 0;
     }
 

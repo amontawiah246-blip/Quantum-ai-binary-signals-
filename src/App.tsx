@@ -126,20 +126,16 @@ export default function App() {
               <label className="text-[10px] font-mono text-slate-500 uppercase tracking-widest block">Neural Orchestration Engine</label>
               <div className="bg-slate-950 rounded-xl p-4 border border-slate-800 space-y-3">
                 <div className="flex items-center justify-between text-[10px] font-mono">
-                  <span className="text-slate-500">SMC_VISION</span>
-                  <span className="text-emerald-400">Llama-3.1-405b</span>
+                  <span className="text-slate-500">QUANT_AGENTS</span>
+                  <span className="text-emerald-400">5 ACTIVE</span>
                 </div>
                 <div className="flex items-center justify-between text-[10px] font-mono">
                   <span className="text-slate-500">EXEC_LOGIC</span>
-                  <span className="text-indigo-400">GPT-4o</span>
+                  <span className="text-indigo-400">LOCAL</span>
                 </div>
                 <div className="flex items-center justify-between text-[10px] font-mono">
                   <span className="text-slate-500">MASTER_BRAIN</span>
-                  <span className="text-indigo-400">Gemini-2.0</span>
-                </div>
-                <div className="flex items-center justify-between text-[10px] font-mono">
-                  <span className="text-slate-500">GITHUB_MODELS</span>
-                  <span className="text-emerald-400">ACTIVE</span>
+                  <span className="text-indigo-400">Gemini-2.5</span>
                 </div>
               </div>
             </div>
@@ -225,12 +221,12 @@ export default function App() {
                 <span className="text-emerald-400 font-bold">CONNECTED</span>
               </div>
               <div className="flex justify-between items-center text-xs">
-                <span className="text-slate-500">Llama Vision API</span>
+                <span className="text-slate-500">Math Agents</span>
                 <span className="text-emerald-400 font-bold">ACTIVE</span>
               </div>
               <div className="flex justify-between items-center text-xs">
                 <span className="text-slate-500">Master Intelligence</span>
-                <span className="text-emerald-400 font-bold">gemini-3.5-flash</span>
+                <span className="text-emerald-400 font-bold">gemini-2.5-flash</span>
               </div>
             </div>
           </div>
