@@ -216,21 +216,21 @@ export default function App() {
 
           <div className="bg-slate-900/50 border border-dashed border-slate-800 rounded-2xl p-6">
             <div className="flex items-baseline gap-2 mb-4">
-              <BarChart3 className="w-4 h-4 text-slate-500" />
-              <h4 className="text-xs font-mono text-slate-400 uppercase tracking-widest">Backtest Stats</h4>
+              <Database className="w-4 h-4 text-slate-500" />
+              <h4 className="text-xs font-mono text-slate-400 uppercase tracking-widest">Network Status</h4>
             </div>
             <div className="space-y-3">
               <div className="flex justify-between items-center text-xs">
-                <span className="text-slate-500">Historical Win Rate</span>
-                <span className="text-emerald-400 font-bold">71.4%</span>
+                <span className="text-slate-500">Twelve Data Feed</span>
+                <span className="text-emerald-400 font-bold">CONNECTED</span>
               </div>
               <div className="flex justify-between items-center text-xs">
-                <span className="text-slate-500">Avg. Signal Strength</span>
-                <span className="text-slate-300 font-bold">Med-High</span>
+                <span className="text-slate-500">Llama Vision API</span>
+                <span className="text-emerald-400 font-bold">ACTIVE</span>
               </div>
               <div className="flex justify-between items-center text-xs">
-                <span className="text-slate-500">Backtest Samples</span>
-                <span className="text-slate-300 font-bold">2.4k+</span>
+                <span className="text-slate-500">Master Intelligence</span>
+                <span className="text-emerald-400 font-bold">gemini-3.5-flash</span>
               </div>
             </div>
           </div>

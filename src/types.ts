@@ -12,14 +12,20 @@ export interface Candle {
   volume: number;
 }
 
-export type SignalSide = "BUY" | "SELL" | "NEUTRAL";
+export type SignalSide = "BUY" | "SELL" | "WAIT" | "NEUTRAL";
 
 export interface AgentReport {
   name: string;
   side: SignalSide;
   confidence: number;
   reasoning: string;
-  indicators?: Record<string, any>;
+  block?: boolean;
+}
+
+export interface VoteSummary {
+  buys: number;
+  sells: number;
+  avgConfidence: number;
 }
 
 export interface FinalSignal {
@@ -27,10 +33,17 @@ export interface FinalSignal {
   confidence: number;
   expirySuggestion: string;
   marketRegime: string;
-  volatility: string;
+  volatility: "Low" | "Moderate" | "High";
   reasoning: string;
+  riskNote: string;
+  confluenceScore?: string;
   agentReports: AgentReport[];
+  voteSummary: VoteSummary;
   timestamp: string;
+  // filled in on frontend for history
+  pair?: string;
+  timeframe?: string;
+  userResult?: "WIN" | "LOSS" | "SKIP";
 }
 
 export type Timeframe = "1m" | "5m" | "15m" | "1h";
